@@ -17,7 +17,7 @@ def findNumber(templatePath, image):
   numpy array which should have the same height as the templates.
   """
 
-  #w = cv2.namedWindow("match")
+  w = cv2.namedWindow("match")
   #cv2.imshow("match", diff)
   #cv2.waitKey()
       
@@ -37,7 +37,8 @@ def findNumber(templatePath, image):
     slideLength = image.shape[1] - templateImage.shape[1] + 1
     ssd = np.zeros(slideLength)
     for i in range(slideLength):
-      ssd[i] = np.sum(abs(image[:, i:(i+templateImage.shape[1])] - templateImage))
+      #ssd[i] = np.sum(abs(image[:, i:(i+templateImage.shape[1])] - templateImage))
+      ssd[i] = np.sum((image[:, i:(i+templateImage.shape[1])] - templateImage)**2)
       
     # Normalize by the size of the template
     ssd = ssd / np.prod(templateImage.shape)
@@ -45,66 +46,96 @@ def findNumber(templatePath, image):
     # Find all of the detections below a certain threshold
     # TODO: take only the local minimum
     # TODO: remove conflicts
-    finds = np.nonzero(ssd < 15)
+    finds = np.nonzero(ssd < 150)
     #code.interact(local=locals())
 
     for f in finds[0]:
       # Only add the last of consecutive detections
       if (f+1) not in finds[0]:
-        detections[f] = digit
+        # Search for things this might overlap with
+        another = False
+        for i in range(f-5, f+5):
+          if i in detections:
+            another = True
+            if ssd[f] < detections[i][1]:
+              print "replacing %d (%f) with %d (%f)" % (detections[i][0], detections[i][1], digit, ssd[f])
+              detections.pop(i) # Remove the inferior detection
+              detections[f] = (digit, ssd[f]) # Replace with better detection
+        # If there were none,
+        if another == False:
+          detections[f] = (digit, ssd[f]) # New detection
  
   # Sort the detections by position
-  print detections
+  #print detections
+
+  #if len(detections) >= 3:
+  #  code.interact(local=locals())
 
   # Build the number
   value = 0
-  for p,val in detections.items():
+  for key in sorted(detections.keys()):
     value *= 10
-    value += val
-    
+    value += detections[key][0]
+
   #code.interact(local=locals())
   
   return value
 
 def __main__():
-  inputImage = cv2.imread('frames/out0120.jpg')
-
-  # Definition of where the scoreboard/status bar is
-  sbLeft = 40
-  sbRight = 680
-  sbTop = 360
-  sbBottom = 460
+  frameNum = 0 # Count of frames we've processed
+  inputVideo = cv2.VideoCapture('2012ok_qm003.mp4')
+  frame = inputVideo.read()
+  while frame[0] is True:
+    inputImage = frame[1]
   
-  # Pull out the scoreboard and scale it to match our working template size
-  scoreboard = inputImage[sbTop:sbBottom, sbLeft:sbRight, :]
+    # Definition of where the scoreboard/status bar is
+    sbLeft = 40
+    sbRight = 680
+    sbTop = 362
+    sbBottom = 460
+    
+    # Pull out the scoreboard and scale it to match our working template size
+    scoreboard = inputImage[sbTop:sbBottom, sbLeft:sbRight, :]
+  
+    # Pull out the timer patch and convert it to grayscale
+    timerLeft = 295
+    timerTop = 0
+    timerWidth = 50
+    timerHeight = 16
+    timerPatch = scoreboard[timerTop:(timerTop+timerHeight), timerLeft:(timerLeft+timerWidth)]
+  
+    # Convert to "grayscale" by just keeping the green
+    # The green channel keeps the highest contrast when the bar crosses the numbers
+    timerPatch = timerPatch[:, :, 1]
+    time = findNumber('templates/timer/%d.png', timerPatch)
 
-  # Pull out the timer patch and convert it to grayscale
-  timerLeft = 295
-  timerTop = 0
-  timerWidth = 50
-  timerHeight = 20
-  timerPatch = scoreboard[timerTop:(timerTop+timerHeight), timerLeft:(timerLeft+timerWidth)]
+    print "%04d, %d" % (frameNum, time)
 
-  timerPatch = cv2.cvtColor(timerPatch, cv2.COLOR_RGB2GRAY)
-  print findNumber('templates/timer/%d.png', timerPatch)
-  #cv2.imwrite('timer.png', timerPatch)
-  #code.interact(local=locals())
-
-
-  ## Draw the scoreboard and some bounding boxes
-  #imFig = plt.imshow(scoreboard)
-  #ax = imFig.get_axes()
-  #
-  #ax.add_patch(patches.Rectangle([timerLeft, timerTop], timerWidth, timerHeight, fill=False)) 
-
-
-  #plt.show()
-
-  # Score
-
-  # Teams playing
-
-  #cv2.imwrite('scoreboard.png', scoreboard)
+    
+    #if frameNum >= 510 and frameNum <= 520:
+    #  cv2.imshow("match", inputImage)
+    #  cv2.waitKey()
+ 
+    #cv2.imwrite('timer.png', timerPatch)
+    #code.interact(local=locals())
+  
+  
+    ## Draw the scoreboard and some bounding boxes
+    #imFig = plt.imshow(scoreboard)
+    #ax = imFig.get_axes()
+    #
+    #ax.add_patch(patches.Rectangle([timerLeft, timerTop], timerWidth, timerHeight, fill=False)) 
+  
+  
+    #plt.show()
+  
+    # Score
+  
+    # Teams playing
+  
+    #cv2.imwrite('scoreboard.png', scoreboard)
+    frame = inputVideo.read()
+    frameNum += 1
 
 __main__()
 
